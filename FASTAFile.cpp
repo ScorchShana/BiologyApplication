@@ -1,4 +1,4 @@
-#include "FASTAFile.h"
+﻿#include "FASTAFile.h"
 
 FASTAFile::FASTAFile() : filename("") {
 	return;
