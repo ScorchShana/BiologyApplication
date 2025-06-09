@@ -1,60 +1,72 @@
 ﻿#include "FASTAInterpretor.h"
 
-static LPCTSTR DNACodeNmae[19] = {TEXT("腺苷（adenosine）"),TEXT("胞嘧啶（cytidine）"),TEXT("鸟嘌呤（guanine）"),TEXT("胸腺嘧啶（thymidine）"),TEXT("尿嘧啶（uridine）"),TEXT("G或A (puRine)"),
-	TEXT("T或C (嘧啶pyrimidine)"),	TEXT("G或T (酮化keto)"),TEXT("A或C (胺化amino)"),TEXT("G或C (强作用strong)"),TEXT("A或T (弱作用weak)"),TEXT("G或T或C"),TEXT("G或A或T"),TEXT("A或C或T"),
-	TEXT("G或C或A"),TEXT("A或G或C或T"),TEXT("未知的"),TEXT("片段长度不定"),TEXT("错误的符号") };
 
-static WCHAR str_number[10] = { TEXT('0'),TEXT('1'),TEXT('2'),TEXT('3'),TEXT('4'),TEXT('5'),TEXT('6'),TEXT('7'),TEXT('8'),TEXT('9') };
+static std::string DNACodeNmae[19] = { "       腺苷(adenosine)","      胞嘧啶(cytidine)","       鸟嘌呤(guanine)","   胸腺嘧啶(thymidine)","       尿嘧啶(uridine)",
+	"         G或A (puRine)",	" T或C (嘧啶pyrimidine)","       G或T (酮化keto)","      A或C (胺化amino)","   G或C (强作用strong)",
+	"     A或T (弱作用weak)","               G或T或C","               G或A或T","               A或C或T","               G或C或A",
+	"            A或G或C或T","            未知的碱基","  片段长度不定(或空缺)","            错误的符号" };
 
-std::wstring number_to_lpctstr(unsigned long long i) {
+int basecode[255] = { UNSIGNEDCODE };
 
-	std::wstring s;
-	if (i == 0ll) s = TEXT("0");
-	WCHAR num;
-	unsigned long long j = i;
-	while (j) {
-		num = TEXT('0') + j % 10;
-		s = num + s;
-		j /= 10;
-	}
-	return s;
+
+int encode(const char& s) {
+	static const std::unordered_map<char, int> encoding_map = {
+		{'A', A}, {'a', A}, {'T', T}, {'t', T}, {'G', G}, {'g', G},
+		{'C', C}, {'c', C}, {'U', U}, {'u', U}, {'R', G_A}, {'r', G_A},
+		{'Y', T_C}, {'y', T_C}, {'K', G_T}, {'k', G_T}, {'M', A_C}, {'m', A_C},
+		{'S', G_C}, {'s', G_C}, {'W', A_T}, {'w', A_T}, {'B', G_T_C}, {'b', G_T_C},
+		{'D', G_A_T}, {'d', G_A_T}, {'H', A_C_T}, {'h', A_C_T}, {'V', G_C_A}, {'v', G_C_A},
+		{'N', A_G_C_T}, {'n', A_G_C_T}, {'X', UNCERTAIN}, {'x', UNCERTAIN}, {'-', UNCERTAIN_LENGTH}
+	};
+
+	auto it = encoding_map.find(s);
+	return (it != encoding_map.end()) ? it->second : UNSIGNEDCODE;
 }
 
-std::wstring number_precentage(unsigned long long i, unsigned long long sum) {
+std::string number_to_str(unsigned long long i) {
+	return std::to_string(i);
+}
 
-	std::wstring s;
+std::string number_precentage_str(unsigned long long i, unsigned long long sum) {
+
+	std::string s;
 	if (i == 0ll) {
-		s = TEXT("0(0%)");
+		s = "0(0%)";
 		return s;
 	}
 
 	unsigned long long percentage = 10000.0 * i / sum;
-	WCHAR num;
+	char num;
 	while (i) {
-		num = TEXT('0') + i % 10;
+		num = '0' + i % 10;
 		s = num + s;
 		i /= 10;
 	}
 
 	if (percentage == 0) {
-		s += TEXT("(<0.01%)");
+		s += "(<0.01%)";
 		return s;
 	}
 	s += '(';
-	if (percentage >= 1000) s += TEXT('0') + percentage / 1000;
-	if (percentage >= 100) s += TEXT('0') + (percentage / 100) % 10;
-	if (percentage < 100) s += TEXT('0');
-	s += TEXT('.');
-	if (percentage >= 10) s += TEXT('0') + (percentage / 10) % 10;
-	if (percentage > 0) s += TEXT('0') + percentage % 10;
-	s += TEXT("%)");
-	
+	if (percentage >= 1000) s += '0' + percentage / 1000;
+	if (percentage >= 100) s += '0' + (percentage / 100) % 10;
+	if (percentage < 100) s += '0';
+	s += '.';
+	if (percentage >= 10) s += '0' + (percentage / 10) % 10;
+	if (percentage > 0) s += '0' + percentage % 10;
+	s += "%)";
+
 	return s;
 }
+
 
 //FASTASegment
 FASTASegment::FASTASegment() : segment_type(annotation),content("") {
 	return;
+}
+
+FASTASegment::~FASTASegment() {
+	content.clear();
 }
 
 FASTASegment::FASTASegment(const FASTASegment& s) {
@@ -81,15 +93,17 @@ bool FASTASegment::is_sequence() const {
 	return segment_type == sequence;
 }
 
-std::string FASTASegment::get_content() const {
-	return content;
-}
+
 
 
 
 //FASTAInterpretor
-FASTAInterpretor::FASTAInterpretor() : interpreted(false) {
+FASTAInterpretor::FASTAInterpretor() : sum(0ll),interpreted(false) {
 	for (int i = 0;i < 20;i++) total_inform[i] = 0;
+}
+
+FASTAInterpretor::~FASTAInterpretor() {
+	fasta_segment.clear();
 }
 
 bool FASTAInterpretor::load_file(const std::string& filename) {
@@ -108,15 +122,15 @@ bool FASTAInterpretor::interpret() {
 	for (int i = 0;i < 20;i++) total_inform[i] = 0;
 	
 	std::string wordline;
-	FASTASegment fsegment;
 
 	bool process_good = true;
 
 	while (!fastafile.eof()) {
-
+		FASTASegment fsegment;
 		fastafile >> wordline;
+		if (wordline.empty()) continue;
 
-		if (wordline[0] == ';' || wordline[0] == '>') {
+		if (wordline[0] == ':' || wordline[0] == '>') {
 			fsegment.set(annotation,wordline.substr(1));
 		}
 		else {
@@ -126,155 +140,58 @@ bool FASTAInterpretor::interpret() {
 		fasta_segment.push_back(fsegment);
 	}
 
-
+	for (int i = 0;i < 20;i++) {
+		if (i <= UNCERTAIN) sum += total_inform[i];
+	}
 
 	return process_good;
 }
 
-void FASTAInterpretor::show(unsigned int width,unsigned int height) const {
-	
-	//gray background
+
+void FASTAInterpretor::showCMD() const {
 
 	unsigned long long sum = 0;
 	unsigned long long max_num = 0;
 	for (int i = 0;i < 20;i++) {
-		if(i<=UNCERTAIN) sum += total_inform[i];
+		if (i <= UNCERTAIN) sum += total_inform[i];
 		max_num = (max_num > total_inform[i]) ? max_num : total_inform[i];
 	}
 
-	if (width <= 400 || height <= 300) {
-		width = 800;
-		height = 600;
+	for (size_t i = 0;i < 19;i++) {
+		unsigned int length = 70.0 * total_inform[i] / max_num;
+		std::cout << DNACodeNmae[i] << ' ';
+		for (size_t j = 0;j < length;j++) std::cout << '-';
+		std::cout << ' ' << number_precentage_str(total_inform[i], sum);
+		std::cout << std::endl;
 	}
 
-	unsigned int line_height = height / 31;
-	unsigned int half_line_height = line_height / 2;
-	unsigned int begin_x = 0.03 * width;
-	unsigned int font_height = (15 < 0.03 * width) ? 15 : 0.03 * width;
-
-	initgraph(width, height);
-	setbkcolor(RGB(220,220,220));
-	cleardevice();
-
-	//font
-	LOGFONT f;
-	gettextstyle(&f);// 获取当前字体设置
-	f.lfHeight = font_height;// 设置字体高度
-	wcscpy_s(f.lfFaceName, _T("黑体"));// 设置字体为“黑体”(高版本 VC 推荐使用 wcscpy_s 函数)
-	f.lfQuality = ANTIALIASED_QUALITY;// 设置输出效果为抗锯齿  
-	settextstyle(&f);// 设置字体样式
-	settextcolor(BLACK);
-
-	setfillcolor(BLUE);
-
-	RECT textbox = { 0,1,width,line_height };
-	drawtext(TEXT("序列信息 Sequence Information"), &textbox, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-
-	for (unsigned int i = 0;i < 20;i++) {
-		if (i == 19) {
-			outtextxy(begin_x, (i + 1) * (line_height + half_line_height), TEXT("总碱基数（未知长度不计）"));
-			outtextxy(begin_x + 20 * font_height, (i + 1) * (line_height + half_line_height), (LPCTSTR)number_to_lpctstr(sum).c_str());
-		}
-		else {
-			outtextxy(begin_x, (i+1) * (line_height + half_line_height), DNACodeNmae[i]);
-			solidrectangle(begin_x + 12 * font_height, (i + 1) * (line_height + half_line_height), begin_x + 12 * font_height + width * 0.5 * total_inform[i] / max_num, (i + 2) * line_height + (i + 1) * half_line_height);
-			outtextxy(begin_x + 12 * font_height + width * 0.5 * total_inform[i] / max_num + 2, (i + 1) * (line_height + half_line_height), (LPCTSTR)number_precentage(total_inform[i],sum).c_str());
-		}
-	}
+	std::cout << "总碱基数(未知长度不计)" << "  " << number_to_str(sum) << std::endl;;
 
 }
 
+//only bases
+std::string FASTAInterpretor::get_bases() const {
+	std::string bases;
+	for (size_t i = 0;i < fasta_segment.size();i++) {
+		if (fasta_segment[i].is_sequence()) {
+			bases += fasta_segment[i].content;
+		}
+	}
+	return bases;
+}
 
-
+//compile each FASTASemgent
 bool FASTAInterpretor::compile(const FASTASegment& segment) {
 	if (segment.is_annotation()) return true;
 
 	bool flag = true;
-
-	std::string seg_content = segment.get_content();
-	for (int i = 0;i < seg_content.size();i++) {
-		DNACode res_code = encode(seg_content[i]);
-		if (res_code == UNSIGNEDCODE || flag) flag = false;
+	int res_code;
+	for (int i = 0;i < segment.content.size();i++) {
+		res_code = encode(segment.content[i]);
+		if (res_code == UNSIGNEDCODE && flag) flag = false;
 		total_inform[res_code]++;
 	}
 
 	return flag;
 }
 
-DNACode FASTAInterpretor::encode(const char& s) const {
-	switch (s) {
-		case 'A':
-		case 'a':
-			return A;
-
-		case 'T':
-		case 't':
-			return T;
-
-		case 'G':
-		case 'g':
-			return G;
-
-		case 'C':
-		case 'c':
-			return C;
-
-		case 'U':
-		case 'u':
-			return U;
-
-		case 'R':
-		case 'r':
-			return G_A;
-
-		case 'Y':
-		case 'y':
-			return T_C;
-
-		case 'K':
-		case'k':
-			return G_T;
-
-		case 'M':
-		case 'm':
-			return A_C;
-
-		case 'S':
-		case 's':
-			return G_C;
-
-		case 'W':
-		case 'w':
-			return A_T;
-
-		case 'B':
-		case 'b':
-			return G_T_C;
-
-		case 'D':
-		case 'd':
-			return G_A_T;
-
-		case 'H':
-		case 'h':
-			return A_C_T;
-
-		case 'V':
-		case 'v':
-			return G_C_A;
-
-		case 'N':
-		case 'n':
-			return A_G_C_T;
-
-		case 'X':
-		case 'x':
-			return UNCERTAIN;
-
-		case '-':
-			return UNCERTAIN_LENGTH;
-
-		default:
-			return UNSIGNEDCODE;
-	}
-}

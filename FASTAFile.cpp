@@ -1,5 +1,6 @@
 ﻿#include "FASTAFile.h"
 
+
 FASTAFile::FASTAFile() : filename("") {
 	return;
 }
@@ -26,6 +27,6 @@ bool FASTAFile::eof() const {
 }
 
 FASTAFile& operator>>(FASTAFile& fastafile, std::string& s) {
-	fastafile.file >> s;
+	std::getline(fastafile.file, s);
 	return fastafile;
 }

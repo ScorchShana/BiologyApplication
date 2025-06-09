@@ -1,10 +1,15 @@
 ﻿#pragma once
 
+
 #ifndef FASTAFILE_HEADER
+#define FASTAFILE_HEADER
 
 #include <fstream>
 #include <string>
 #include <iostream>
+#include <iomanip>
+
+
 
 class FASTAFile {
 	
